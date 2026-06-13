@@ -1,5 +1,17 @@
 use axum::{Router, routing::get};
-use tracing::{Level, info};
+use clap::Parser;
+use std::net::SocketAddr;
+use tracing::{Level, error, info};
+
+#[derive(Parser, Debug)]
+#[command(version, about = "A webhook-replayer for testing purposes")]
+struct Args {
+    #[arg(short, long)]
+    listen: SocketAddr,
+
+    #[arg(short, long)]
+    forward: SocketAddr,
+}
 
 #[tokio::main]
 async fn main() {
@@ -12,16 +24,32 @@ async fn main() {
         .with_span_list(true) // Include the full span hierarchy
         .init();
 
-    let app = Router::new().route("/", get(hello_world));
+    let args = match Args::try_parse() {
+        Ok(parsed_args) => parsed_args,
+        Err(error) => {
+            error!("Error parsing arguments: {}", error);
+            std::process::exit(1);
+        }
+    };
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3210")
-        .await
-        .unwrap();
+    info!(
+        "Starting webhook-replayer with listen: {} and forward: {}",
+        args.listen, args.forward
+    );
 
-    info!("Listening on: http://{}", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route("/", get(hello_world))
+        .route("/heathz", get(healthz));
+
+    let listener = tokio::net::TcpListener::bind(args.listen).await.unwrap();
+
     axum::serve(listener, app).await.unwrap();
 }
 
 async fn hello_world() -> &'static str {
     "Hello, World!"
+}
+
+async fn healthz() -> &'static str {
+    "OK"
 }
