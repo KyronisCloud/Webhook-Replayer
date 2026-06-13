@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use tracing::{Level, error, info};
 
 #[derive(Parser, Debug)]
-#[command(version, about = "A webhook-replayer for testing purposes")]
+#[command(version, about = "A webhook-replayer for webhook replay purposes")]
 struct Args {
     #[arg(short, long)]
     listen: SocketAddr,

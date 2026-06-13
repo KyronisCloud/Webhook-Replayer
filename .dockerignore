@@ -1,0 +1,10 @@
+target/
+.git/
+.gitignore
+README.md
+LICENSE
+.DS_Store
+.dockerignore
+*.db
+*.db-shm
+*.db-wal
