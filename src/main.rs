@@ -1,13 +1,15 @@
 use axum::{
     Json, Router,
-    http::HeaderMap,
+    body::Body,
+    http::{HeaderMap, Request},
     routing::{get, post},
 };
 use clap::Parser;
+use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use std::{net::SocketAddr, path::Path, str::FromStr};
+use std::{collections::HashMap, net::SocketAddr, path::Path, str::FromStr};
 use tracing::{Level, error, info};
 
 #[derive(Parser, Debug)]
@@ -55,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/", get(hello_world))
         .route("/heathz", get(healthz))
-        .route("/", post(webhook_handler));
+        .fallback(webhook_handler);
 
     let listener = tokio::net::TcpListener::bind(args.listen).await.unwrap();
 
@@ -72,8 +74,31 @@ async fn healthz() -> &'static str {
     "OK"
 }
 
-async fn webhook_handler(headers: HeaderMap, Json(payload): Json<Value>) -> Json<Value> {
+async fn webhook_handler(req: Request<Body>) -> Result<Json<Value>, Json<Value>> {
     // Log the received webhook event
+    let path = req.uri().path();
+
+    let query = req.uri().query();
+
+    let method = req.method().to_string();
+
+    let headers = req.headers().clone();
+
+    let byte_body = req
+        .into_body()
+        .collect()
+        .await
+        .map_err(|_| {
+            error!("collect request body failed");
+            Json(json!({"status": "error", "message": "Failed to read request body"}))
+        })?
+        .to_bytes();
+
+    let payload: HashMap<String, Value> = serde_json::from_slice(&byte_body).unwrap_or_else(|_| {
+        error!("Failed to parse request body as JSON");
+        HashMap::new()
+    });
+
     info!(
         "Received webhook event with headers: {:?} and payload: {:?}",
         headers, payload
@@ -81,13 +106,18 @@ async fn webhook_handler(headers: HeaderMap, Json(payload): Json<Value>) -> Json
 
     // Here you would typically save the event to the database and forward it to the target URL
 
-    Json(json!({"status": "received"}))
+    Ok(Json(json!(payload)))
 }
 
 async fn connect(filename: &str) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::from_str(filename)?.create_if_missing(true);
 
     SqlitePool::connect_with(options).await
+}
+
+async fn save_webhook_event(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    // Implement the logic to save the webhook event to the database
+    Ok(())
 }
 
 async fn create_tables(pool: &SqlitePool) -> Result<(), sqlx::Error> {
